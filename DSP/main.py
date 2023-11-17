@@ -1,19 +1,21 @@
 import cv2
 import os
 import numpy as np
+import math
 
 class Converters:
 
     @staticmethod
     def unit_frame_test(image, converter):
         cv2.imshow("before", image)
-        cv2.imshow(f"after '{converter.__name__}'", converter(image))
+        image = converter(image)
+        cv2.imshow(f"after '{converter.__name__}' dtype='{image.dtype}' shape='{image.shape}'", image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
     @staticmethod
     def remove_ground(image):
-        res = np.zeros(image.shape)
+        res = np.zeros(image.shape[:2], np.uint8)
 
         for i in range(0, image.shape[0]):
             for j in range(0, image.shape[1]):
@@ -22,16 +24,73 @@ class Converters:
                 red = image[i, j, 2]
 
                 if (green > red > blue):
-                    res[i, j] = (0, 0, 0)
+                    res[i, j] = 0
                 else:
-                    res[i, j] = (255, 255, 255)
+                    res[i, j] = 255
                  
         return res
 
     @staticmethod
+    def laplacianGradient(image):
+        laplacian = cv2.Laplacian(image, cv2.CV_8U)
+        return laplacian
+
+    @staticmethod
+    def sobelGradient(image):
+        sobelx = cv2.Sobel(image, cv2.CV_8U, 1, 0, ksize=3)
+        sobely = cv2.Sobel(image, cv2.CV_8U, 0, 1, ksize=3)
+        sobel_res = sobelx + sobely
+        return sobel_res
+
+    @staticmethod
+    def cannyEdgeDetector(image, threshold1, threshold2):
+        return cv2.Canny(image, threshold1=threshold1, threshold2=threshold2)
+
+    @staticmethod
+    def applyHoughTransform(image, ccanny):
+        lines = cv2.HoughLines(image, 1, np.pi / 180, 150, None, 0, 0)
+        if lines is not None:
+            for i in range(0, len(lines)):
+                rho = lines[i][0][0]
+                theta = lines[i][0][1]
+                a = math.cos(theta)
+                b = math.sin(theta)
+                x0 = a * rho
+                y0 = b * rho
+                pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
+                pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
+                cv2.line(ccanny, pt1, pt2, (0,0,0), 30, cv2.FILLED)
+        return ccanny
+    
+    @staticmethod
+    def dilateAndErode(image):
+        image = cv2.dilate(image, 
+                        kernel=cv2.getStructuringElement(shape=cv2.MORPH_RECT, ksize=(3, 3)),
+                        iterations=3)
+        image = cv2.erode(image, 
+                        kernel=cv2.getStructuringElement(shape=cv2.MORPH_RECT, ksize=(3, 3)),
+                        iterations=1)
+        return image
+    
+    @staticmethod
     def convert_detect(image):
         ground_removed = Converters.remove_ground(image)
-        return ground_removed
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        sobel = Converters.sobelGradient(gray_image)
+
+        res = sobel + ground_removed
+
+        res = cv2.threshold(res, thresh=100, maxval=255, type=cv2.THRESH_BINARY)[1]
+
+        res = Converters.dilateAndErode(res)
+
+        canny = Converters.cannyEdgeDetector(res, 50, 200)
+        ccanny = cv2.cvtColor(canny, cv2.COLOR_GRAY2BGR)
+
+        res = Converters.applyHoughTransform(canny, ccanny)
+
+        #res = cv2.cvtColor(res, cv2.COLOR_GRAY2BGR)        
+        return res
 
 
 def write_video(video_filename: str, save_filename: str):
@@ -42,7 +101,7 @@ def write_video(video_filename: str, save_filename: str):
         cap.release()
         return
 
-    fourcc = cv2.VideoWriter_fourcc(*"MP4V")
+    fourcc = cv2.VideoWriter_fourcc(*"MJPG")
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
 
@@ -68,7 +127,7 @@ def write_video(video_filename: str, save_filename: str):
 
 if __name__ == "__main__":
     
-    #test_frame = cv2.imread("C:\\Users\\lucas\\BCC\\CV\\DSP\\test_frame.jpg")
-    #Converters.unit_frame_test(test_frame, Converters.remove_ground)
+    #test_frame = cv2.imread("DSP/test_frame.jpg")
+    #Converters.unit_frame_test(test_frame, Converters.convert_detect)
 
-    write_video(video_filename="C:\\Users\\lucas\\BCC\\CV\\DSP\\f2002bvsg.mp4", save_filename="C:\\Users\\lucas\\BCC\\CV\\DSP\\output.mp4")
+    write_video(video_filename="DSP/f2002bvsg.mp4", save_filename="DSP/output.avi")
