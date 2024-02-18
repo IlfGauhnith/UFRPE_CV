@@ -103,10 +103,10 @@ class Converters:
         sobel = Converters.sobelGradient(gray_image)
 
         res = sobel + ground_removed
-
+        
         res = cv2.threshold(res, thresh=100, maxval=255,
                             type=cv2.THRESH_BINARY)[1]
-
+        
         res = Converters.dilateAndErode(res)
 
         canny = Converters.cannyEdgeDetector(res, 50, 200)
@@ -114,6 +114,10 @@ class Converters:
         res = Converters.applyLineHoughTransform(canny, ccanny)
 
         res = Converters.applyCircleHoughTransform(res)
+
+        contours, _ = cv2.findContours(cv2.cvtColor(res, cv2.COLOR_BGR2GRAY), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        res = cv2.drawContours(image, contours, -1, (0, 0, 255), 2) 
+
         return res
 
 
